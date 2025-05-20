@@ -7,7 +7,8 @@ void main(List<String> arguments) {
       'CLI tool for Flutter internationalization management')
     ..addCommand(ScanCommand())
     ..addCommand(GenerateCommand())
-    ..addCommand(RefactorCommand());
+    ..addCommand(RefactorCommand())
+    ..addCommand(HelpCommand());
 
   runner.run(arguments).catchError((error) {
     if (error is! UsageException) {
@@ -197,6 +198,43 @@ class RefactorCommand extends Command {
     } catch (e) {
       print('Error refactoring code: $e');
       exit(1);
+    }
+  }
+}
+
+class HelpCommand extends Command {
+  @override
+  final name = 'help';
+  
+  @override
+  final description = 'Display help information for intl_cli commands';
+
+  HelpCommand() {
+    argParser.addOption('command',
+        abbr: 'c',
+        help: 'The command to display help for');
+  }
+  
+  @override
+  String get invocation => '${runner!.executableName} help [command]';
+
+  @override
+  void run() {
+    // Check if a specific command was requested
+    String? commandName = argResults?['command'] ?? (argResults?.rest.isNotEmpty == true ? argResults!.rest.first : null);
+    
+    if (commandName != null) {
+      // Display help for the specific command
+      Command? command = runner!.commands[commandName];
+      if (command != null) {
+        print(command.usage);
+      } else {
+        print('Unknown command: $commandName');
+        print('Run "${runner!.executableName} help" to see all available commands.');
+      }
+    } else {
+      // Display general help
+      print(runner!.usage);
     }
   }
 }
