@@ -1,5 +1,5 @@
 name: intl_cli
-description: A sample command-line application.
+description: A CLI tool for Flutter/Dart internationalization.
 version: 1.0.0
 # repository: https://github.com/my_org/my_repo
 
@@ -18,5 +18,5 @@ dev_dependencies:
   test: ^1.24.0
 
 executables:
-  intl_cli:
+  intl_cli: intl_cli
 

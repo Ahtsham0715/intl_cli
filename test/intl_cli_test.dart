@@ -23,7 +23,8 @@ void main() {
 
   group('StringExtractor', () {
     test('should extract quoted strings', () {
-      var source = 'print("Hello"), print(\'World\');';
+      // This test now matches widget-aware extraction logic
+      var source = 'Text("Hello"), MyText(\'World\');';
       var extractor = StringExtractor(source);
       var strings = extractor.extract();
       expect(strings, containsAll(['Hello', 'World']));
@@ -41,7 +42,11 @@ void main() {
     test('should generate valid arb file', () {
       var arbData = {'key1': 'value1'};
       var tempFile = File('${Directory.systemTemp.path}/test.arb');
-      ArbGenerator.generate(arbData, tempFile.path);
+      ArbGenerator.generateOrMerge(
+        newStrings: arbData,
+        filePath: tempFile.path,
+        suggestMeaningfulKeys: false,
+      );
       var content = tempFile.readAsStringSync();
       var decoded = jsonDecode(content);
       expect(decoded, equals(arbData));
