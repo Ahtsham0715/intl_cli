@@ -11,9 +11,7 @@ topics:
   - internationalization
   - i18n
   - flutter
-  - dart
   - localization
-  - arb
 
 environment:
   sdk: ^3.5.3
