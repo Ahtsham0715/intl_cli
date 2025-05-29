@@ -505,16 +505,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: Report bugs and request features on GitHub Issues
 - **Discussions**: Ask questions in GitHub Discussions
-- **Documentation**: Check this README and inline help: `dart run bin/intl_cli.dart <command> --help`
+- **Documentation**: Check this README and inline help: `intl_cli <command> --help`
 
 ---
 
-## 🙏 Acknowledgments
-
-- Flutter team for the excellent internationalization framework
-- The Dart community for inspiration and feedback
-- Contributors who help improve this tool
-
----
 
 **Made with ❤️ for the Flutter community**

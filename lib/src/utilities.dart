@@ -500,7 +500,7 @@ bool ensureFlutterLocalizationsDependency(String directoryPath) {
     // Insert flutter_localizations dependency
     final indentation = '  '; // Use consistent 2-space indentation
     lines.insert(insertIndex, '${indentation}flutter_localizations:');
-    lines.insert(insertIndex + 1, '${indentation}  sdk: flutter');
+    lines.insert(insertIndex + 1, '$indentation  sdk: flutter');
     
     // Write back to file
     final newContent = lines.join('\n');
