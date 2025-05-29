@@ -1,6 +1,6 @@
 name: intl_cli
 description: A powerful command-line tool for automating Flutter/Dart internationalization. Extract hardcoded strings, generate ARB files, and refactor code with ease.
-version: 1.0.0
+version: 1.0.1
 homepage: https://github.com/Ahtsham0715/intl_cli
 repository: https://github.com/Ahtsham0715/intl_cli
 issue_tracker: https://github.com/Ahtsham0715/intl_cli/issues

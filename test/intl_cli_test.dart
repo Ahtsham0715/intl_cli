@@ -29,6 +29,26 @@ void main() {
       var strings = extractor.extract();
       expect(strings, containsAll(['Hello', 'World']));
     });
+
+    test('should extract all translation patterns comprehensively', () {
+      var source = '''
+        Text('Widget Text'),
+        tr('tr_key'),
+        'extension_key'.tr,
+        Get.tr('get_key'),
+        AppLocalizations.of(context)!.appMethod,
+      ''';
+      
+      var extractor = StringExtractor(source);
+      var strings = extractor.extract();
+      
+      expect(strings, contains('Widget Text'));
+      expect(strings, contains('tr_key'));
+      expect(strings, contains('extension_key'));
+      expect(strings, contains('get_key'));
+      expect(strings, contains('appMethod'));
+      expect(strings.length, equals(5));
+    });
   });
 
   group('Translator', () {

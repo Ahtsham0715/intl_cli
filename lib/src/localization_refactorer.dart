@@ -18,11 +18,18 @@ class LocalizationRefactorer {
     bool preserveConst = true,
   }) {
     // Get or create cached regex for better performance
-    final widgetRegex = _regexCache['widget'] ??= RegExp(r'(const\s+)?(Text|MyText)\s*\(([^)]*)\)', multiLine: true);
+    // Updated to support more text widget types
+    final widgetRegex = _regexCache['widget'] ??= RegExp(r'(const\s+)?(Text|MyText|CustomText|Label)\s*\(([^)]*)\)', multiLine: true);
+    
+    // Support both regular and null assertion syntax based on context
+    // If the file already uses AppLocalizations with null assertion, use that format
+    final usesNullAssertion = content.contains('AppLocalizations.of(context)!.');
     
     // Pre-compute the replacement string
     final replacement = useAppLocalizations
-        ? 'AppLocalizations.of(context).$key'
+        ? usesNullAssertion 
+          ? 'AppLocalizations.of(context)!.$key' 
+          : 'AppLocalizations.of(context).$key'
         : 'tr("$key")';
     
     // Use StringBuffer for more efficient string manipulation
@@ -119,7 +126,8 @@ class LocalizationRefactorer {
     bool useAppLocalizations = true,
     bool preserveConst = true,
   }) {
-    final widgetRegex = _regexCache['widget'] ??= RegExp(r'(const\s+)?(Text|MyText)\s*\(([^)]*)\)', multiLine: true);
+    // Updated regex to support more text widget types
+    final widgetRegex = _regexCache['widget'] ??= RegExp(r'(const\s+)?(Text|MyText|CustomText|Label)\s*\(([^)]*)\)', multiLine: true);
     bool changesMade = false;
     final buffer = StringBuffer();
     int lastMatch = 0;
@@ -138,8 +146,14 @@ class LocalizationRefactorer {
           replaced = true;
           final constModifier = match.group(1) ?? '';
           final widget = match.group(2) ?? '';
+          
+          // Support both regular and null assertion syntax based on context
+          // If the file already uses AppLocalizations with null assertion, use that format
+          final usesNullAssertion = content.contains('AppLocalizations.of(context)!.');
           final replacement = useAppLocalizations
-              ? 'AppLocalizations.of(context).$key'
+              ? usesNullAssertion 
+                ? 'AppLocalizations.of(context)!.$key' 
+                : 'AppLocalizations.of(context).$key'
               : 'tr("$key")';
           
           final newConstModifier = preserveConst && !useAppLocalizations ? constModifier : '';

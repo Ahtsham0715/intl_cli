@@ -60,7 +60,24 @@ class InternationalizeCommand extends Command<void> {
 
     // Ensure flutter_localizations dependency is present
     print('\u001b[36mChecking for flutter_localizations dependency...\u001b[0m');
-    ensureFlutterLocalizationsDependency(dir);
+    final depResult = ensureFlutterLocalizationsDependency(dir);
+    if (depResult) {
+      print('\u001b[32m✓ Flutter localizations dependency configured successfully\u001b[0m');
+    } else {
+      print('\u001b[33mWarning: Flutter localizations dependency setup has issues\u001b[0m');
+      print('\u001b[36mℹ️  You may need to manually add flutter_localizations to your pubspec.yaml\u001b[0m');
+    }
+
+    // Setup complete Flutter localization configuration
+    print('\u001b[36mSetting up Flutter localization configuration...\u001b[0m');
+    final projectRoot = dir == 'lib' ? Directory.current.path : dir;
+    print('\u001b[36mℹ️  Project root directory: $projectRoot\u001b[0m');
+    final setupResult = setupFlutterLocalization(projectRoot);
+    if (setupResult) {
+      print('\u001b[32m✓ Flutter localization configuration completed successfully\u001b[0m');
+    } else {
+      print('\u001b[33mWarning: Complete Flutter localization setup had issues, but proceeding with string processing...\u001b[0m');
+    }
 
     var output = argResults!['output'] as String?;
     var keyFormat = argResults!['key-format'] as String?;

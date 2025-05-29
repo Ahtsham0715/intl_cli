@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 import 'package:intl_cli/intl_cli.dart' as intl_cli;
 import 'package:path/path.dart' as path;
-import 'utilities.dart' show PreferencesManager, detectPackageName, ensureFlutterLocalizationsDependency;
+import 'utilities.dart' show PreferencesManager, detectPackageName, ensureFlutterLocalizationsDependency, setupFlutterLocalization;
 
 // Command classes
 part 'commands/scan_command.dart';

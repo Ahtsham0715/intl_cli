@@ -1,3 +1,12 @@
+## 1.0.1
+
+- **Localization Setup Automation:**
+  - Enhanced automated workflow for complete Flutter i18n setup
+  - Improved integration with Flutter's localization generation
+  - Better handling of ARB file creation and management
+  - Streamlined process for setting up `l10n.yaml` configuration
+  - Enhanced support for automated `pubspec.yaml` dependencies setup
+
 ## 1.0.0
 
 - Initial release of intl_cli - A powerful command-line tool for Flutter/Dart internationalization

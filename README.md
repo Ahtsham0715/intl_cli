@@ -509,5 +509,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
+## 👨‍💻 Creator
+
+This project was created and is maintained by **Ahtsham Mehboob**.
+
+- **GitHub**: [https://github.com/Ahtsham0715/](https://github.com/Ahtsham0715/)
+
+---
 
 **Made with ❤️ for the Flutter community**

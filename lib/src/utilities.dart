@@ -470,34 +470,11 @@ bool ensureFlutterLocalizationsDependency(String directoryPath) {
       return false;
     }
     
-    // Find where to insert flutter_localizations
-    // Look for flutter: sdk: flutter first
-    int insertIndex = -1;
-    for (int i = dependenciesIndex + 1; i < lines.length; i++) {
-      final line = lines[i].trim();
-      
-      // Stop if we hit another section
-      if (line.endsWith(':') && !line.startsWith(' ') && !line.startsWith('\t')) {
-        insertIndex = i;
-        break;
-      }
-      
-      // Look for flutter: sdk: flutter
-      if (line.startsWith('flutter:')) {
-        // Check if next line contains sdk: flutter
-        if (i + 1 < lines.length && lines[i + 1].trim().startsWith('sdk:')) {
-          insertIndex = i + 2; // Insert after sdk: flutter
-          break;
-        }
-      }
-    }
+    // Find where to insert flutter_localizations - should be right after dependencies:
+    // but before the main flutter dependency for proper ordering
+    int insertIndex = dependenciesIndex + 1;
     
-    // If we didn't find flutter: sdk: flutter, insert after dependencies line
-    if (insertIndex == -1) {
-      insertIndex = dependenciesIndex + 1;
-    }
-    
-    // Insert flutter_localizations dependency
+    // Insert flutter_localizations dependency at the beginning of dependencies
     final indentation = '  '; // Use consistent 2-space indentation
     lines.insert(insertIndex, '${indentation}flutter_localizations:');
     lines.insert(insertIndex + 1, '$indentation  sdk: flutter');
@@ -580,16 +557,221 @@ bool setupFlutterLocalization(String directoryPath, {String arbDir = 'lib/l10n',
     // 4. Create ARB directory if it doesn't exist
     _ensureArbDirectory(directoryPath, arbDir);
     
-    // 5. Check and suggest MaterialApp configuration
-    _checkMaterialAppConfiguration(directoryPath);
+    // 5. Setup MaterialApp configuration automatically
+    _setupMaterialAppConfiguration(directoryPath);
+    
+    // 6. Automatically run flutter commands to complete setup
+    _runFlutterCommands(directoryPath);
     
     print('\u001b[32m✅ Flutter localization setup completed!\u001b[0m');
-    print('\u001b[36mℹ️  Run "flutter pub get" and "flutter gen-l10n" to generate localization files\u001b[0m');
     
     return true;
   } catch (e) {
     print('\u001b[31mError setting up Flutter localization: $e\u001b[0m');
     return false;
+  }
+}
+
+/// Automatically run Flutter commands for complete setup
+void _runFlutterCommands(String directoryPath) {
+  try {
+    print('\u001b[36m🚀 Running Flutter commands to complete setup...\u001b[0m');
+    
+    // Check if Flutter is available
+    final flutterVersionResult = Process.runSync(
+      'flutter',
+      ['--version'],
+      workingDirectory: directoryPath,
+    );
+    
+    if (flutterVersionResult.exitCode != 0) {
+      print('\u001b[33mWarning: Flutter command not found or not in PATH. Manual steps required.\u001b[0m');
+      print('\u001b[36mℹ️  Please run these commands manually in your project directory:\u001b[0m');
+      print('\u001b[36m   - flutter pub get\u001b[0m');
+      print('\u001b[36m   - flutter gen-l10n\u001b[0m');
+      return;
+    }
+    
+    // Check if pubspec.lock needs updating by comparing timestamps with pubspec.yaml
+    final pubspecYamlFile = File(path.join(directoryPath, 'pubspec.yaml'));
+    final pubspecLockFile = File(path.join(directoryPath, 'pubspec.lock'));
+    bool needsPubGet = true;
+    
+    if (pubspecYamlFile.existsSync() && pubspecLockFile.existsSync()) {
+      final yamlStat = pubspecYamlFile.statSync();
+      final lockStat = pubspecLockFile.statSync();
+      
+      // If pubspec.lock is newer than pubspec.yaml, we don't need to run pub get
+      if (lockStat.modified.isAfter(yamlStat.modified)) {
+        print('\u001b[36mℹ️  pubspec.lock is up to date. Skipping flutter pub get.\u001b[0m');
+        needsPubGet = false;
+      }
+    }
+    
+    // Run flutter pub get only if needed
+    if (needsPubGet) {
+      print('\u001b[33m📦 Running flutter pub get...\u001b[0m');
+      final pubGetResult = Process.runSync(
+        'flutter',
+        ['pub', 'get'],
+        workingDirectory: directoryPath,
+      );
+      
+      if (pubGetResult.exitCode == 0) {
+        print('\u001b[32m✓ flutter pub get completed successfully\u001b[0m');
+      } else {
+        final errorMessage = pubGetResult.stderr.toString().trim();
+        print('\u001b[33mWarning: flutter pub get failed:\u001b[0m');
+        if (errorMessage.contains('Could not resolve')) {
+          print('\u001b[31m  - Dependency resolution error. Check your internet connection and pubspec.yaml file.\u001b[0m');
+        } else if (errorMessage.contains('conflict')) {
+          print('\u001b[31m  - Dependency conflict detected. There may be incompatible package versions.\u001b[0m');
+        } else {
+          print('\u001b[31m  - Error: ${errorMessage.split('\n').take(3).join('\n  ')}\u001b[0m');
+        }
+        print('\u001b[36mℹ️  Please run "flutter pub get" manually to resolve the issue\u001b[0m');
+      }
+    }
+    
+    // Create a basic template ARB file if none exists
+    final arbDir = _createBasicTemplateArbFile(directoryPath);
+    bool arbFilesExist = false;
+    
+    // Check if ARB files exist
+    if (arbDir != null) {
+      final arbFiles = arbDir.listSync().where((e) => e is File && e.path.endsWith('.arb')).toList();
+      arbFilesExist = arbFiles.isNotEmpty;
+      
+      if (!arbFilesExist) {
+        print('\u001b[33m⚠️  No ARB files found in ${arbDir.path}\u001b[0m');
+        print('\u001b[36mℹ️  Creating a sample ARB file with common strings...\u001b[0m');
+        
+        // Create a sample ARB file
+        final sampleFile = File(path.join(arbDir.path, 'intl_en.arb'));
+        final sampleContent = '''{
+  "@@locale": "en",
+  "appTitle": "My App",
+  "@appTitle": {
+    "description": "The title of the application"
+  },
+  "welcome": "Welcome",
+  "@welcome": {
+    "description": "Welcome message"
+  },
+  "hello": "Hello",
+  "@hello": {
+    "description": "Hello greeting"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Cancel button label"
+  },
+  "save": "Save",
+  "@save": {
+    "description": "Save button label"
+  }
+}''';
+        sampleFile.writeAsStringSync(sampleContent);
+        print('\u001b[32m✓ Created sample ARB file at ${sampleFile.path}\u001b[0m');
+        arbFilesExist = true;
+      }
+    }
+    
+    // Run flutter gen-l10n if l10n.yaml exists and ARB files are available
+    final l10nFile = File(path.join(directoryPath, 'l10n.yaml'));
+    if (l10nFile.existsSync() && arbFilesExist) {
+      print('\u001b[33m🌍 Running flutter gen-l10n...\u001b[0m');
+      final genL10nResult = Process.runSync(
+        'flutter',
+        ['gen-l10n'],
+        workingDirectory: directoryPath,
+      );
+      
+      if (genL10nResult.exitCode == 0) {
+        print('\u001b[32m✓ flutter gen-l10n completed successfully\u001b[0m');
+        print('\u001b[36mℹ️  Localization files have been generated. You can now use AppLocalizations.of(context) in your code.\u001b[0m');
+      } else {
+        final errorMessage = genL10nResult.stderr.toString().trim();
+        print('\u001b[33mWarning: flutter gen-l10n failed:\u001b[0m');
+        
+        if (errorMessage.contains('No ARB files found')) {
+          print('\u001b[31m  - No ARB files found in the specified directory.\u001b[0m');
+          print('\u001b[36mℹ️  Make sure to create at least one ARB file in the specified arb-dir before running gen-l10n\u001b[0m');
+        } else if (errorMessage.contains('invalid format')) {
+          print('\u001b[31m  - ARB file format error. Check that your ARB files are valid JSON.\u001b[0m');
+        } else {
+          print('\u001b[31m  - Error: ${errorMessage.split('\n').take(3).join('\n  ')}\u001b[0m');
+        }
+        
+        print('\u001b[36mℹ️  Next steps:\u001b[0m');
+        print('\u001b[36m   1. Create or fix your ARB file(s) in lib/l10n/\u001b[0m');
+        print('\u001b[36m   2. Run "flutter gen-l10n" manually\u001b[0m');
+      }
+    } else if (!l10nFile.existsSync()) {
+      print('\u001b[33m⚠️  l10n.yaml file not found\u001b[0m');
+      print('\u001b[36mℹ️  To complete setup, create l10n.yaml file and run "flutter gen-l10n"\u001b[0m');
+    }
+    
+    print('\u001b[36m\n✨ Setup completed! Here are your next steps:\u001b[0m');
+    print('\u001b[36m 1. Edit your ARB files in lib/l10n/ to add your translations\u001b[0m');
+    print('\u001b[36m 2. Run "flutter gen-l10n" after updating ARB files\u001b[0m');
+    print('\u001b[36m 3. Use AppLocalizations.of(context)!.keyName in your code\u001b[0m');
+    print('\u001b[36m 4. For more languages, create additional ARB files like intl_es.arb\u001b[0m');
+    
+  } catch (e) {
+    print('\u001b[33mWarning: Error running Flutter commands: $e\u001b[0m');
+    print('\u001b[36mℹ️  Please run these commands manually in your project directory:\u001b[0m');
+    print('\u001b[36m   - flutter pub get\u001b[0m');
+    print('\u001b[36m   - flutter gen-l10n\u001b[0m');
+  }
+}
+/// Create a basic template ARB file with common strings if none exists
+/// Returns the ARB directory (whether it exists or was created)
+Directory? _createBasicTemplateArbFile(String directoryPath) {
+  try {
+    final arbDir = Directory(path.join(directoryPath, 'lib', 'l10n'));
+    if (!arbDir.existsSync()) {
+      return null;
+    }
+    
+    final templateFile = File(path.join(arbDir.path, 'intl_en.arb'));
+    if (templateFile.existsSync()) {
+      print('\u001b[32m✓ Template ARB file already exists\u001b[0m');
+      return arbDir;
+    }
+    
+    print('\u001b[33m📝 Creating basic template ARB file...\u001b[0m');
+    
+    final basicContent = '''{
+  "@@locale": "en",
+  "appTitle": "My App",
+  "@appTitle": {
+    "description": "The title of the application"
+  },
+  "welcome": "Welcome",
+  "@welcome": {
+    "description": "Welcome message"
+  },
+  "hello": "Hello",
+  "@hello": {
+    "description": "Hello greeting"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Cancel button label"
+  },
+  "save": "Save",
+  "@save": {
+    "description": "Save button label"
+  }
+}''';
+    
+    templateFile.writeAsStringSync(basicContent);
+    print('\u001b[32m✓ Created basic template ARB file at ${templateFile.path}\u001b[0m');
+    return arbDir;
+  } catch (e) {
+    print('\u001b[33mWarning: Could not create template ARB file: $e\u001b[0m');
+    return null;
   }
 }
 
@@ -601,19 +783,57 @@ void _ensureGenerateFlag(String directoryPath) {
 
     final content = pubspecFile.readAsStringSync();
     
-    // Check if generate flag already exists
-    if (content.contains('generate:')) {
+    // Check if generate flag already exists in the flutter section
+    if (RegExp(r'flutter:\s*[\s\S]*?generate:\s*true').hasMatch(content)) {
       return;
     }
     
     print('\u001b[33m📝 Adding generate: true to pubspec.yaml...\u001b[0m');
     
     final lines = content.split('\n');
-    final flutterIndex = lines.indexWhere((line) => line.trim() == 'flutter:');
+    
+    // Find the flutter section (not the dependency) - must be at start of line
+    int flutterIndex = -1;
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      // Look for flutter: at the beginning of a line (top-level section)
+      if (line.trim() == 'flutter:' && !line.startsWith('  ') && !line.startsWith('\t')) {
+        flutterIndex = i;
+        break;
+      }
+    }
     
     if (flutterIndex != -1) {
-      // Insert generate: true after flutter: line
-      lines.insert(flutterIndex + 1, '  generate: true');
+      // Find the last property in the flutter section or the first line after flutter:
+      int insertIndex = flutterIndex + 1;
+      
+      // Find the end of the flutter section by looking for either:
+      // 1. A line that's not indented (next top-level section)
+      // 2. End of file
+      for (int i = flutterIndex + 1; i < lines.length; i++) {
+        final line = lines[i];
+        
+        // If this is a top-level section (not indented and ends with :), we've reached the end
+        if (line.trim().isNotEmpty && !line.startsWith('  ') && !line.startsWith('\t') && line.trim().endsWith(':')) {
+          insertIndex = i;
+          break;
+        }
+        
+        // If this is a property in the flutter section, update the insert position
+        if (line.trim().isNotEmpty && (line.startsWith('  ') || line.startsWith('\t'))) {
+          insertIndex = i + 1;
+        }
+        
+        // If we've reached the end of the file
+        if (i == lines.length - 1) {
+          insertIndex = lines.length;
+          break;
+        }
+      }
+      
+      // Insert generate: true with proper indentation
+      lines.insert(insertIndex, '  generate: true');
+      
       pubspecFile.writeAsStringSync(lines.join('\n'));
       print('\u001b[32m✓ Added generate: true to pubspec.yaml\u001b[0m');
     }
@@ -664,8 +884,8 @@ void _ensureArbDirectory(String directoryPath, String arbDir) {
   }
 }
 
-/// Check MaterialApp configuration and provide guidance
-void _checkMaterialAppConfiguration(String directoryPath) {
+/// Automatically setup MaterialApp/GetMaterialApp localization configuration
+void _setupMaterialAppConfiguration(String directoryPath) {
   try {
     final mainFile = File(path.join(directoryPath, 'lib', 'main.dart'));
     
@@ -676,25 +896,143 @@ void _checkMaterialAppConfiguration(String directoryPath) {
     
     final content = mainFile.readAsStringSync();
     
-    // Check if MaterialApp has localization delegates
-    if (!content.contains('localizationsDelegates') || !content.contains('AppLocalizations.delegate')) {
-      print('\u001b[33m⚠️  MaterialApp localization configuration missing!\u001b[0m');
-      print('\u001b[36mℹ️  Add the following to your MaterialApp:\u001b[0m');
-      print('''
-  localizationsDelegates: const [
-    AppLocalizations.delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-  ],
-  supportedLocales: const [
-    Locale('en'), // English
-  ],''');
-      print('\u001b[36mAnd import: import \'package:flutter_localizations/flutter_localizations.dart\';\u001b[0m');
+    // Check for existing localization configuration
+    bool hasLocalizationDelegates = content.contains('localizationsDelegates');
+    bool hasAppLocalizations = content.contains('AppLocalizations.delegate');
+    bool hasSupportedLocales = content.contains('supportedLocales');
+    
+    if (hasLocalizationDelegates && hasAppLocalizations && hasSupportedLocales) {
+      print('\u001b[32m✓ App localization configuration already exists\u001b[0m');
+      return;
+    }
+    
+    print('\u001b[33m🔧 Setting up App localization configuration...\u001b[0m');
+    
+    // 1. Add required imports first
+    String updatedContent = _addRequiredImports(content);
+    
+    // 2. Determine app type and update configuration
+    final isGetMaterialApp = content.contains('GetMaterialApp');
+    final appType = isGetMaterialApp ? 'GetMaterialApp' : 'MaterialApp';
+    print('\u001b[36mℹ️  Found $appType widget in main.dart\u001b[0m');
+    
+    // 3. Add localization configuration preserving existing config
+    updatedContent = _addMaterialAppConfiguration(updatedContent, isGetMaterialApp);
+    
+    // Write back to file only if changes were made
+    if (updatedContent != content) {
+      mainFile.writeAsStringSync(updatedContent);
+      print('\u001b[32m✓ $appType localization configuration updated successfully\u001b[0m');
     } else {
-      print('\u001b[32m✓ MaterialApp localization configuration found\u001b[0m');
+      print('\u001b[36mℹ️  No changes needed to $appType configuration\u001b[0m');
     }
   } catch (e) {
-    print('\u001b[33mWarning: Could not check MaterialApp configuration: $e\u001b[0m');
+    print('\u001b[33mWarning: Could not setup App configuration: $e\u001b[0m');
+    print('\u001b[36mℹ️  Please update your MaterialApp/GetMaterialApp configuration manually\u001b[0m');
   }
+}
+
+/// Add required imports for localization
+String _addRequiredImports(String content) {
+  final imports = [
+    "import 'package:flutter_localizations/flutter_localizations.dart';",
+    "import 'package:flutter_gen/gen_l10n/app_localizations.dart';",
+  ];
+  
+  String updatedContent = content;
+  
+  for (final import in imports) {
+    if (!updatedContent.contains(import)) {
+      // Find the last import statement
+      final lines = updatedContent.split('\n');
+      int lastImportIndex = -1;
+      
+      for (int i = 0; i < lines.length; i++) {
+        if (lines[i].trim().startsWith('import ')) {
+          lastImportIndex = i;
+        }
+      }
+      
+      if (lastImportIndex != -1) {
+        lines.insert(lastImportIndex + 1, import);
+        updatedContent = lines.join('\n');
+      }
+    }
+  }
+  
+  return updatedContent;
+}
+
+/// Add MaterialApp/GetMaterialApp localization configuration while preserving existing settings
+String _addMaterialAppConfiguration(String content, bool isGetMaterialApp) {
+  // Find MaterialApp or GetMaterialApp
+  final materialAppRegex = RegExp(isGetMaterialApp ? r'GetMaterialApp\s*\(' : r'MaterialApp\s*\(');
+  final match = materialAppRegex.firstMatch(content);
+  
+  if (match == null) {
+    print('\u001b[33mWarning: ${isGetMaterialApp ? "GetMaterialApp" : "MaterialApp"} not found in main.dart\u001b[0m');
+    return content;
+  }
+  
+  // Extract existing configuration
+  final startPos = match.end;
+  int bracketCount = 1;
+  int insertionPoint = -1;
+  String existingConfig = '';
+  
+  // Scan through constructor to find insertion point and existing config
+  for (int i = startPos; i < content.length && bracketCount > 0; i++) {
+    final char = content[i];
+    if (char == '(') {
+      bracketCount++;
+    } else if (char == ')') {
+      bracketCount--;
+      if (bracketCount == 0) {
+        insertionPoint = i;
+        existingConfig = content.substring(startPos, i).trim();
+        break;
+      }
+    }
+  }
+  
+  if (insertionPoint == -1) {
+    print('\u001b[33mWarning: Could not find app widget closing bracket\u001b[0m');
+    return content;
+  }
+  
+  // Determine what configuration is missing
+  bool needsLocalizationDelegates = !existingConfig.contains('localizationsDelegates');
+  bool needsSupportedLocales = !existingConfig.contains('supportedLocales');
+  
+  if (!needsLocalizationDelegates && !needsSupportedLocales) {
+    return content;
+  }
+  
+  // Build new configuration preserving existing settings
+  String localizationConfig = '';
+  bool needsComma = existingConfig.trim().isNotEmpty && !existingConfig.trimRight().endsWith(',');
+  
+  if (needsLocalizationDelegates) {
+    localizationConfig += '''${needsComma ? ',' : ''}
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],''';
+  }
+  
+  if (needsSupportedLocales) {
+    localizationConfig += '''${needsComma || localizationConfig.isNotEmpty ? ',' : ''}
+      supportedLocales: const [
+        Locale('en', ''), // English
+      ],''';
+  }
+  
+  // Insert configuration preserving indentation
+  final currentIndentation = RegExp(r'^\s*').firstMatch(existingConfig)?.group(0) ?? '';
+  final indentedConfig = localizationConfig.split('\n').map((line) => 
+    line.isEmpty ? line : currentIndentation + line).join('\n');
+  
+  return content.substring(0, insertionPoint) + indentedConfig + content.substring(insertionPoint);
 }
