@@ -46,11 +46,21 @@ class InternationalizeCommand extends Command<void> {
       print('No directory specified, defaulting to: \u001b[32m$dir\u001b[0m');
     }
     
+    // Make sure we're not treating the command name as a directory
+    if (dir == name || dir == aliases.first) {
+      dir = 'lib';
+      print('Command name detected as directory, defaulting to: \u001b[32m$dir\u001b[0m');
+    }
+    
     // Validate directory exists
     if (!Directory(dir).existsSync()) {
       print('\u001b[31mError: Directory "$dir" does not exist.\u001b[0m');
       exit(1);
     }
+
+    // Ensure flutter_localizations dependency is present
+    print('\u001b[36mChecking for flutter_localizations dependency...\u001b[0m');
+    ensureFlutterLocalizationsDependency(dir);
 
     var output = argResults!['output'] as String?;
     var keyFormat = argResults!['key-format'] as String?;

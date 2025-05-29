@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:path/path.dart' as path;
 
 // Helper function for displaying progress
 void printProgress(String message) {
@@ -41,7 +42,7 @@ class PreferencesManager {
     if (home == null) {
       throw Exception('Could not determine home directory');
     }
-    return File('$home/$_prefsFileName');
+    return File(path.join(home, _prefsFileName));
   }
 
   /// Load user preferences
@@ -388,17 +389,17 @@ String detectPackageName(String directoryPath) {
         ? directoryPath.substring(0, directoryPath.length - 1) 
         : directoryPath;
     
-    // Handle relative paths
-    final rootPath = normalizedPath.startsWith('lib/') 
-        ? normalizedPath.replaceFirst('lib/', '') 
+    // Handle relative paths using path package for better cross-platform support
+    final rootPath = normalizedPath.startsWith('lib${path.separator}') 
+        ? normalizedPath.replaceFirst('lib${path.separator}', '') 
         : normalizedPath;
     
     // Try different possible locations for pubspec.yaml
     final List<String> possiblePaths = [
-      '$rootPath/pubspec.yaml',
-      '${rootPath.split('/').first}/pubspec.yaml',
+      path.join(rootPath, 'pubspec.yaml'),
+      path.join(path.split(rootPath).first, 'pubspec.yaml'),
       'pubspec.yaml',
-      '../pubspec.yaml',
+      path.join('..', 'pubspec.yaml'),
     ];
     
     File? pubspecFile;
@@ -436,5 +437,264 @@ String detectPackageName(String directoryPath) {
   } catch (e) {
     print('Error detecting package name: $e');
     return 'app';
+  }
+}
+
+/// Check if flutter_localizations dependency exists in pubspec.yaml
+/// If not, add it automatically
+bool ensureFlutterLocalizationsDependency(String directoryPath) {
+  try {
+    // Find pubspec.yaml file
+    final pubspecFile = _findPubspecFile(directoryPath);
+    if (pubspecFile == null) {
+      print('\u001b[33mWarning: Could not find pubspec.yaml file\u001b[0m');
+      return false;
+    }
+
+    final content = pubspecFile.readAsStringSync();
+    
+    // Check if flutter_localizations is already present
+    if (content.contains('flutter_localizations:')) {
+      print('\u001b[32m✓ flutter_localizations dependency already exists\u001b[0m');
+      return true;
+    }
+    
+    print('\u001b[33m📦 Adding flutter_localizations dependency to pubspec.yaml...\u001b[0m');
+    
+    // Find the dependencies section
+    final lines = content.split('\n');
+    final dependenciesIndex = lines.indexWhere((line) => line.trim() == 'dependencies:');
+    
+    if (dependenciesIndex == -1) {
+      print('\u001b[31mError: Could not find dependencies section in pubspec.yaml\u001b[0m');
+      return false;
+    }
+    
+    // Find where to insert flutter_localizations
+    // Look for flutter: sdk: flutter first
+    int insertIndex = -1;
+    for (int i = dependenciesIndex + 1; i < lines.length; i++) {
+      final line = lines[i].trim();
+      
+      // Stop if we hit another section
+      if (line.endsWith(':') && !line.startsWith(' ') && !line.startsWith('\t')) {
+        insertIndex = i;
+        break;
+      }
+      
+      // Look for flutter: sdk: flutter
+      if (line.startsWith('flutter:')) {
+        // Check if next line contains sdk: flutter
+        if (i + 1 < lines.length && lines[i + 1].trim().startsWith('sdk:')) {
+          insertIndex = i + 2; // Insert after sdk: flutter
+          break;
+        }
+      }
+    }
+    
+    // If we didn't find flutter: sdk: flutter, insert after dependencies line
+    if (insertIndex == -1) {
+      insertIndex = dependenciesIndex + 1;
+    }
+    
+    // Insert flutter_localizations dependency
+    final indentation = '  '; // Use consistent 2-space indentation
+    lines.insert(insertIndex, '${indentation}flutter_localizations:');
+    lines.insert(insertIndex + 1, '${indentation}  sdk: flutter');
+    
+    // Write back to file
+    final newContent = lines.join('\n');
+    pubspecFile.writeAsStringSync(newContent);
+    
+    print('\u001b[32m✓ Added flutter_localizations dependency to pubspec.yaml\u001b[0m');
+    print('\u001b[36mℹ️  You may need to run "flutter pub get" to update dependencies\u001b[0m');
+    
+    return true;
+  } catch (e) {
+    print('\u001b[31mError adding flutter_localizations dependency: $e\u001b[0m');
+    return false;
+  }
+}
+
+  /// Helper function to find pubspec.yaml file
+File? _findPubspecFile(String directoryPath) {
+  // Normalize path using path package for cross-platform compatibility
+  final normalizedPath = path.normalize(directoryPath);
+  
+  // Handle relative paths using path package for better cross-platform support
+  final rootPath = normalizedPath.startsWith('lib${path.separator}') 
+      ? normalizedPath.replaceFirst('lib${path.separator}', '') 
+      : normalizedPath;
+  
+  // Try different possible locations for pubspec.yaml
+  final List<String> possiblePaths = [
+    '$rootPath/pubspec.yaml',
+    '${rootPath.split('/').first}/pubspec.yaml',
+    'pubspec.yaml',
+    '../pubspec.yaml',
+  ];
+  
+  File? pubspecFile;
+  for (final path in possiblePaths) {
+    final file = File(path);
+    if (file.existsSync()) {
+      pubspecFile = file;
+      break;
+    }
+  }
+  
+  if (pubspecFile == null) {
+    // If we still haven't found it, try searching up the directory tree
+    var currentDir = Directory(rootPath);
+    while (currentDir.path != path.rootPrefix(currentDir.path) && currentDir.path.isNotEmpty) {
+      final pubspec = File(path.join(currentDir.path, 'pubspec.yaml'));
+      if (pubspec.existsSync()) {
+        pubspecFile = pubspec;
+        break;
+      }
+      currentDir = currentDir.parent;
+    }
+  }
+  
+  return pubspecFile;
+}
+
+/// Automatically setup complete Flutter localization configuration
+/// This ensures the project has all necessary files and configurations
+bool setupFlutterLocalization(String directoryPath, {String arbDir = 'lib/l10n', String templateFile = 'intl_en.arb'}) {
+  try {
+    print('\u001b[36m🔧 Setting up Flutter localization configuration...\u001b[0m');
+    
+    // 1. Ensure flutter_localizations dependency
+    if (!ensureFlutterLocalizationsDependency(directoryPath)) {
+      print('\u001b[31mFailed to add flutter_localizations dependency\u001b[0m');
+      return false;
+    }
+    
+    // 2. Add generate: true to pubspec.yaml if not present
+    _ensureGenerateFlag(directoryPath);
+    
+    // 3. Create l10n.yaml configuration file
+    _createL10nYaml(directoryPath, arbDir, templateFile);
+    
+    // 4. Create ARB directory if it doesn't exist
+    _ensureArbDirectory(directoryPath, arbDir);
+    
+    // 5. Check and suggest MaterialApp configuration
+    _checkMaterialAppConfiguration(directoryPath);
+    
+    print('\u001b[32m✅ Flutter localization setup completed!\u001b[0m');
+    print('\u001b[36mℹ️  Run "flutter pub get" and "flutter gen-l10n" to generate localization files\u001b[0m');
+    
+    return true;
+  } catch (e) {
+    print('\u001b[31mError setting up Flutter localization: $e\u001b[0m');
+    return false;
+  }
+}
+
+/// Ensure generate: true flag exists in pubspec.yaml
+void _ensureGenerateFlag(String directoryPath) {
+  try {
+    final pubspecFile = _findPubspecFile(directoryPath);
+    if (pubspecFile == null) return;
+
+    final content = pubspecFile.readAsStringSync();
+    
+    // Check if generate flag already exists
+    if (content.contains('generate:')) {
+      return;
+    }
+    
+    print('\u001b[33m📝 Adding generate: true to pubspec.yaml...\u001b[0m');
+    
+    final lines = content.split('\n');
+    final flutterIndex = lines.indexWhere((line) => line.trim() == 'flutter:');
+    
+    if (flutterIndex != -1) {
+      // Insert generate: true after flutter: line
+      lines.insert(flutterIndex + 1, '  generate: true');
+      pubspecFile.writeAsStringSync(lines.join('\n'));
+      print('\u001b[32m✓ Added generate: true to pubspec.yaml\u001b[0m');
+    }
+  } catch (e) {
+    print('\u001b[33mWarning: Could not add generate flag: $e\u001b[0m');
+  }
+}
+
+/// Create l10n.yaml configuration file
+void _createL10nYaml(String directoryPath, String arbDir, String templateFile) {
+  try {
+    final l10nFile = File(path.join(directoryPath, 'l10n.yaml'));
+    
+    if (l10nFile.existsSync()) {
+      print('\u001b[32m✓ l10n.yaml already exists\u001b[0m');
+      return;
+    }
+    
+    print('\u001b[33m📝 Creating l10n.yaml configuration...\u001b[0m');
+    
+    final l10nConfig = '''arb-dir: $arbDir
+template-arb-file: $templateFile
+output-localization-file: app_localizations.dart
+output-dir: lib/generated/l10n
+''';
+    
+    l10nFile.writeAsStringSync(l10nConfig);
+    print('\u001b[32m✓ Created l10n.yaml\u001b[0m');
+  } catch (e) {
+    print('\u001b[33mWarning: Could not create l10n.yaml: $e\u001b[0m');
+  }
+}
+
+/// Ensure ARB directory exists
+void _ensureArbDirectory(String directoryPath, String arbDir) {
+  try {
+    final arbDirectory = Directory(path.join(directoryPath, arbDir));
+    
+    if (!arbDirectory.existsSync()) {
+      print('\u001b[33m📁 Creating ARB directory: $arbDir...\u001b[0m');
+      arbDirectory.createSync(recursive: true);
+      print('\u001b[32m✓ Created ARB directory\u001b[0m');
+    } else {
+      print('\u001b[32m✓ ARB directory already exists\u001b[0m');
+    }
+  } catch (e) {
+    print('\u001b[33mWarning: Could not create ARB directory: $e\u001b[0m');
+  }
+}
+
+/// Check MaterialApp configuration and provide guidance
+void _checkMaterialAppConfiguration(String directoryPath) {
+  try {
+    final mainFile = File(path.join(directoryPath, 'lib', 'main.dart'));
+    
+    if (!mainFile.existsSync()) {
+      print('\u001b[33mWarning: main.dart not found\u001b[0m');
+      return;
+    }
+    
+    final content = mainFile.readAsStringSync();
+    
+    // Check if MaterialApp has localization delegates
+    if (!content.contains('localizationsDelegates') || !content.contains('AppLocalizations.delegate')) {
+      print('\u001b[33m⚠️  MaterialApp localization configuration missing!\u001b[0m');
+      print('\u001b[36mℹ️  Add the following to your MaterialApp:\u001b[0m');
+      print('''
+  localizationsDelegates: const [
+    AppLocalizations.delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+  ],
+  supportedLocales: const [
+    Locale('en'), // English
+  ],''');
+      print('\u001b[36mAnd import: import \'package:flutter_localizations/flutter_localizations.dart\';\u001b[0m');
+    } else {
+      print('\u001b[32m✓ MaterialApp localization configuration found\u001b[0m');
+    }
+  } catch (e) {
+    print('\u001b[33mWarning: Could not check MaterialApp configuration: $e\u001b[0m');
   }
 }

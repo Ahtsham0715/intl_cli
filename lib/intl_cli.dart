@@ -8,6 +8,7 @@ export 'src/arb_generator.dart';
 export 'src/localization_refactorer.dart';
 export 'src/utilities.dart';
 import 'dart:io';
+import 'package:path/path.dart' as path;
 
 import 'package:intl_cli/src/arb_generator.dart';
 import 'package:intl_cli/src/file_scanner.dart';
@@ -17,10 +18,37 @@ import 'package:intl_cli/src/utilities.dart';
 
 /// Scan directory and return a map of files and their translatable strings
 Map<String, List<String>> scanDirectory(String directoryPath, {List<String>? excludePatterns}) {
-  print('Scanning directory: $directoryPath');
-  var directory = Directory(directoryPath);
+  // Log directory path for debugging
+  final currentDir = Directory.current.path;
+  print('Current working directory: $currentDir');
+  print('Scanning directory (input path): "$directoryPath"');
+  
+  // Normalize directory path (this is critical for handling the command name issue)
+  String normalizedPath = directoryPath;
+  
+  // Hard safety check: if the path is a command name, replace it with "lib"
+  if (normalizedPath == 'internationalize' || normalizedPath == 'i18n') {
+    normalizedPath = 'lib';
+    print('WARNING: Command name detected as path, replaced with "lib"');
+  }
+  
+  // Convert relative path to absolute path if needed using path package
+  if (!path.isAbsolute(normalizedPath)) {
+    normalizedPath = path.join(currentDir, normalizedPath);
+    print('Converted to absolute path: "$normalizedPath"');
+  }
+  
+  // Normalize the final path
+  normalizedPath = path.normalize(normalizedPath);
+  
+  print('Final normalized path to scan: "$normalizedPath"');
+  
+  // Verify the directory exists
+  final directory = Directory(normalizedPath);
   if (!directory.existsSync()) {
-    throw FileSystemException('Directory does not exist', directoryPath);
+    final error = 'Directory does not exist: "$normalizedPath"';
+    print('ERROR: $error');
+    throw FileSystemException(error, normalizedPath);
   }
   
   // If no exclude patterns provided, try to load from preferences
@@ -198,6 +226,12 @@ String _generateMeaningfulKey(String text) {
   if (words.isEmpty) return 'emptyString';
   
   String key = words[0];
+  
+  // Ensure first word doesn't start with a number
+  if (key.isNotEmpty && RegExp(r'^\d').hasMatch(key)) {
+    key = 'text$key';
+  }
+  
   for (var i = 1; i < words.length; i++) {
     if (words[i].isNotEmpty) {
       key += words[i][0].toUpperCase() + words[i].substring(1);

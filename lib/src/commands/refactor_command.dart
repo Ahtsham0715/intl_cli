@@ -50,6 +50,10 @@ class RefactorCommand extends Command {
       exit(1);
     }
 
+    // Ensure flutter_localizations dependency is present
+    print('\u001b[36mChecking for flutter_localizations dependency...\u001b[0m');
+    ensureFlutterLocalizationsDependency(dir);
+
     final dryRun = argResults!['dry-run'] as bool;
     var useAppLocalizations = argResults!['use-app-localizations'] as bool;
     var packageName = argResults!['package'] as String? ?? "";

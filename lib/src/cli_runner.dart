@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 import 'package:intl_cli/intl_cli.dart' as intl_cli;
 import 'package:path/path.dart' as path;
-import 'utilities.dart' show PreferencesManager, detectPackageName;
+import 'utilities.dart' show PreferencesManager, detectPackageName, ensureFlutterLocalizationsDependency;
 
 // Command classes
 part 'commands/scan_command.dart';
@@ -28,6 +28,9 @@ void run(List<String> arguments) {
   runner.addCommand(PreferencesCommand());
   runner.addCommand(InternationalizeCommand());
   // More commands will be added later
+  
+  // Log arguments for debugging
+  print('CLI runner received arguments: $arguments');
   
   // Show help if no arguments provided
   if (arguments.isEmpty) {

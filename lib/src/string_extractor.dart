@@ -88,7 +88,7 @@ class StringExtractor {
       .where((string) => string != null && string.isNotEmpty && !excludePattern.hasMatch(string))
       .forEach((string) => extracted.add(string!));
       
-    // Second pattern to catch title: const Text('title') patterns
+    // Second pattern to catch title: Text(AppLocalizations.of(context).title) patterns
     RegExp('title:\\s*(?:const\\s+)?Text\\(\\s*([\'"])([^\\1]*?)\\1', multiLine: true)
       .allMatches(content)
       .where((match) => !_shouldSkipMatch(match))
@@ -116,7 +116,7 @@ class StringExtractor {
   }
 
   void _processNamedParameters(Set<String> extracted, RegExp excludePattern) {
-    // Match named parameters like text: "Value" or child: Text("Value")
+    // Match named parameters like text: "Value" or child: Text(AppLocalizations.of(context).value)
     RegExp('(text|label|title|message|description|hint|labelText|hintText|placeholder|tooltip|content|header|subtitle|caption):\\s*([\'"])([^\\2]*?)\\2', multiLine: true)
       .allMatches(content)
       .where((match) => !_shouldSkipMatch(match))

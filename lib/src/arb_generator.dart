@@ -89,6 +89,17 @@ class ArbGenerator {
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
         .trim();
+    
+    // Handle empty or invalid base
+    if (base.isEmpty) {
+      base = 'text';
+    }
+    
+    // Ensure the first character is a letter (required for Dart method names)
+    if (base.isNotEmpty && RegExp(r'^\d').hasMatch(base)) {
+      base = 'text$base';
+    }
+    
     switch (keyFormat) {
       case 'camelCase':
         return _toCamelCase(base);
@@ -103,7 +114,14 @@ class ArbGenerator {
   static String _toCamelCase(String input) {
     final words = input.split(RegExp(r'\s+'));
     if (words.isEmpty) return '';
-    return words.first + words.skip(1).map((w) => w.isNotEmpty ? w[0].toUpperCase() + w.substring(1) : '').join();
+    
+    // Ensure first word doesn't start with a number
+    String firstWord = words.first;
+    if (firstWord.isNotEmpty && RegExp(r'^\d').hasMatch(firstWord)) {
+      firstWord = 'text$firstWord';
+    }
+    
+    return firstWord + words.skip(1).map((w) => w.isNotEmpty ? w[0].toUpperCase() + w.substring(1) : '').join();
   }
 
   /// Detect plural/gender patterns and generate ARB entries accordingly
