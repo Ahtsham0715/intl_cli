@@ -11,16 +11,16 @@ class ArbGenerator {
     String keyFormat = 'camelCase', // Options: snake_case, camelCase, dot.case
   }) {
     final file = File(filePath);
-    
+
     // Create directory if it doesn't exist
     final directory = file.parent;
     if (!directory.existsSync()) {
       directory.createSync(recursive: true);
     }
-    
+
     Map<String, dynamic> arbData = {};
     bool fileExists = file.existsSync();
-    
+
     if (fileExists) {
       try {
         arbData = jsonDecode(file.readAsStringSync());
@@ -31,51 +31,34 @@ class ArbGenerator {
         fileExists = false;
       }
     }
-    
-    // Create a reverse lookup for existing translations
-    Map<String, String> existingValueToKey = {};
-    if (fileExists) {
-      arbData.forEach((key, value) {
-        if (value is String) {
-          existingValueToKey[value] = key;
-        }
-      });
-    }
-    
-    // Process new strings
-    final pluralGenderStrings = addPluralAndGenderSupport(newStrings);
+
     int newAdded = 0;
-    
-    for (final entry in pluralGenderStrings.entries) {
-      // First check if the exact string already exists in the ARB file
-      if (entry.value is String && existingValueToKey.containsKey(entry.value)) {
-        // Skip, we already have this exact string
-        continue;
-      }
+
+    for (final entry in newStrings.entries) {
+      final value = entry.value;
       
-      // Generate key for new string
-      String key = suggestMeaningfulKeys
-          ? _suggestKey(entry.value is String ? entry.value as String : entry.key, keyFormat)
-          : entry.key;
+      // Always respect the original key if provided
+      String key = entry.key;
       
-      // Ensure key is unique by adding a suffix if needed
-      int suffix = 1;
-      String baseKey = key;
-      while (arbData.containsKey(key)) {
-        key = '${baseKey}_$suffix';
-        suffix++;
-      }
+      print('📍 Processing value: $value for key: $key');
+      bool needsPluralization = value.contains('(s)') || value.contains('{count}');
+      dynamic processedValue = needsPluralization
+          ? _generatePluralOrGenderValue(value)
+          : (_needsPluralOrGenderSupport(value) ? _generatePluralOrGenderValue(value) : value);
       
-      // Add the new string
-      arbData[key] = entry.value;
+      print('✏️ Generated value: $processedValue');
+
+      // Always write the value since we know it's new or an update
+      arbData[key] = processedValue;
       newAdded++;
     }
-    
-    // Add context notes for ambiguous strings
+
+    print('📦 Final ARB data: $arbData');
+    // Add context notes and save
     arbData = addContextNotes(arbData);
     var arbContent = JsonEncoder.withIndent('  ').convert(arbData);
     file.writeAsStringSync(arbContent);
-    
+
     if (newAdded > 0) {
       print('✅ Added $newAdded new strings to ${file.path}');
     } else {
@@ -83,82 +66,91 @@ class ArbGenerator {
     }
   }
 
-  /// Suggest a meaningful ARB key from a string with custom format
-  static String _suggestKey(String value, String keyFormat) {
-    var base = value
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-        .trim();
-    
-    // Handle empty or invalid base
-    if (base.isEmpty) {
-      base = 'text';
-    }
-    
-    // Ensure the first character is a letter (required for Dart method names)
-    if (base.isNotEmpty && RegExp(r'^\d').hasMatch(base)) {
-      base = 'text$base';
-    }
-    
-    switch (keyFormat) {
-      case 'camelCase':
-        return _toCamelCase(base);
-      case 'dot.case':
-        return base.replaceAll(RegExp(r'\s+'), '.');
-      case 'snake_case':
-      default:
-        return base.replaceAll(RegExp(r'\s+'), '_');
-    }
+
+
+  /// Checks if a string needs plural or gender support
+  static bool _needsPluralOrGenderSupport(String value) {
+    // Only return true if there are explicit indicators
+    return value.contains('(s)') || // Explicit plural indicator
+           value.contains('{count}') || // Explicit count placeholder
+           RegExp(r'\b(he|she|his|her|they|their)\b', caseSensitive: false).hasMatch(value) || // Gender indicators
+           RegExp(r'\b\d+\s+\w+s\b').hasMatch(value); // Explicit numbers with plurals
   }
 
-  static String _toCamelCase(String input) {
-    final words = input.split(RegExp(r'\s+'));
-    if (words.isEmpty) return '';
-    
-    // Ensure first word doesn't start with a number
-    String firstWord = words.first;
-    if (firstWord.isNotEmpty && RegExp(r'^\d').hasMatch(firstWord)) {
-      firstWord = 'text$firstWord';
+  /// Generate plural or gender variations for a string that needs it
+  static dynamic _generatePluralOrGenderValue(String value) {
+    // Handle plural forms first
+    if (value.contains('(s)') || value.contains('{count}')) {
+      // Normalize the base string first
+      String baseValue = value.replaceAll(RegExp(r'\b\d+\b'), '{count}');
+
+      // Create singular form
+      String singularForm = baseValue
+          .replaceAll('(s)', '')  // Remove (s) for singular
+          .replaceAll(RegExp(r'\bitems?\b'), 'item')  // Normalize to singular form
+          .trim();
+
+      // Create plural form
+      String pluralForm = baseValue
+          .replaceAll('(s)', 's')  // Add 's' for plural
+          .replaceAll(RegExp(r'\bitems?\b'), 'items')  // Normalize to plural form
+          .trim();
+
+      // Return the plural forms as a Map
+      return <String, String>{
+        'one': singularForm,
+        'other': pluralForm,
+      };
+    } else if (RegExp(r'\b(he|she|his|her|they|their)\b', caseSensitive: false).hasMatch(value)) {
+      // Handle gender variations
+      return <String, String>{
+        'male': value.replaceAll(RegExp(r'\b(they|their)\b', caseSensitive: false), 'he'),
+        'female': value.replaceAll(RegExp(r'\b(they|their)\b', caseSensitive: false), 'she'),
+        'other': value,
+      };
     }
-    
-    return firstWord + words.skip(1).map((w) => w.isNotEmpty ? w[0].toUpperCase() + w.substring(1) : '').join();
+
+    return value;
   }
 
   /// Detect plural/gender patterns and generate ARB entries accordingly
-  static Map<String, dynamic> addPluralAndGenderSupport(Map<String, String> newStrings) {
+  static Map<String, dynamic> addPluralAndGenderSupport(
+      Map<String, String> newStrings) {
     final result = <String, dynamic>{};
     for (final entry in newStrings.entries) {
       final value = entry.value;
-      
+
       // Check for potential plural patterns
-      bool containsCount = value.toLowerCase().contains('count') || 
-                          value.contains('{count}') || 
-                          RegExp(r'\b\d+\s+\w+s?\b').hasMatch(value);
-                          
-      bool containsPlural = value.contains('(s)') || 
-                           (value.contains(' item') || value.contains(' items')) ||
-                           (value.contains(' file') || value.contains(' files'));
-      
+      bool containsCount = value.toLowerCase().contains('count') ||
+          value.contains('{count}') ||
+          RegExp(r'\b\d+\s+\w+s?\b').hasMatch(value);
+
+      bool containsPlural = value.contains('(s)') ||
+          (value.contains(' item') || value.contains(' items')) ||
+          (value.contains(' file') || value.contains(' files'));
+
       // Detect gender patterns
-      bool containsGender = value.toLowerCase().contains(' he ') || 
-                           value.toLowerCase().contains(' she ') || 
-                           value.toLowerCase().contains(' they ') ||
-                           value.toLowerCase().contains(' his ') || 
-                           value.toLowerCase().contains(' her ') || 
-                           value.toLowerCase().contains(' their ');
-      
+      bool containsGender = value.toLowerCase().contains(' he ') ||
+          value.toLowerCase().contains(' she ') ||
+          value.toLowerCase().contains(' they ') ||
+          value.toLowerCase().contains(' his ') ||
+          value.toLowerCase().contains(' her ') ||
+          value.toLowerCase().contains(' their ');
+
       if (containsCount && containsPlural) {
         // Example: '{count} item(s)' or '1 item' or 'count items'
-        String singularForm = value.replaceAll('(s)', '')
-                                  .replaceAll(RegExp(r'\b(\d+|count)\s+items\b'), r'$1 item')
-                                  .replaceAll(RegExp(r'\bitems\b'), 'item')
-                                  .replaceAll(RegExp(r'\b\d+\b'), '{count}');
-                                  
-        String pluralForm = value.replaceAll('(s)', 's')
-                                .replaceAll(RegExp(r'\b(\d+|count)\s+item\b'), r'$1 items')
-                                .replaceAll(RegExp(r'\bitem\b'), 'items')
-                                .replaceAll(RegExp(r'\b\d+\b'), '{count}');
-        
+        String singularForm = value
+            .replaceAll('(s)', '')
+            .replaceAll(RegExp(r'\b(\d+|count)\s+items\b'), r'$1 item')
+            .replaceAll(RegExp(r'\bitems\b'), 'item')
+            .replaceAll(RegExp(r'\b\d+\b'), '{count}');
+
+        String pluralForm = value
+            .replaceAll('(s)', 's')
+            .replaceAll(RegExp(r'\b(\d+|count)\s+item\b'), r'$1 items')
+            .replaceAll(RegExp(r'\bitem\b'), 'items')
+            .replaceAll(RegExp(r'\b\d+\b'), '{count}');
+
         result[entry.key] = {
           "one": singularForm,
           "other": pluralForm,
@@ -168,43 +160,60 @@ class ArbGenerator {
         String maleForm = value;
         String femaleForm = value;
         String otherForm = value;
-        
+
         // Replace gender pronouns with ICU syntax
         if (value.toLowerCase().contains(' he ')) {
-          maleForm = value.replaceAll(RegExp(r'\bhe\b', caseSensitive: false), 
-                      '{gender, select, male{he} female{she} other{they}}');
-          femaleForm = value.replaceAll(RegExp(r'\bhe\b', caseSensitive: false), 'she');
-          otherForm = value.replaceAll(RegExp(r'\bhe\b', caseSensitive: false), 'they');
+          maleForm = value.replaceAll(RegExp(r'\bhe\b', caseSensitive: false),
+              '{gender, select, male{he} female{she} other{they}}');
+          femaleForm =
+              value.replaceAll(RegExp(r'\bhe\b', caseSensitive: false), 'she');
+          otherForm =
+              value.replaceAll(RegExp(r'\bhe\b', caseSensitive: false), 'they');
         } else if (value.toLowerCase().contains(' she ')) {
-          maleForm = value.replaceAll(RegExp(r'\bshe\b', caseSensitive: false), 'he');
-          femaleForm = value.replaceAll(RegExp(r'\bshe\b', caseSensitive: false), 
-                        '{gender, select, male{he} female{she} other{they}}');
-          otherForm = value.replaceAll(RegExp(r'\bshe\b', caseSensitive: false), 'they');
+          maleForm =
+              value.replaceAll(RegExp(r'\bshe\b', caseSensitive: false), 'he');
+          femaleForm = value.replaceAll(
+              RegExp(r'\bshe\b', caseSensitive: false),
+              '{gender, select, male{he} female{she} other{they}}');
+          otherForm = value.replaceAll(
+              RegExp(r'\bshe\b', caseSensitive: false), 'they');
         } else if (value.toLowerCase().contains(' they ')) {
-          maleForm = value.replaceAll(RegExp(r'\bthey\b', caseSensitive: false), 'he');
-          femaleForm = value.replaceAll(RegExp(r'\bthey\b', caseSensitive: false), 'she');
-          otherForm = value.replaceAll(RegExp(r'\bthey\b', caseSensitive: false), 
-                       '{gender, select, male{he} female{she} other{they}}');
+          maleForm =
+              value.replaceAll(RegExp(r'\bthey\b', caseSensitive: false), 'he');
+          femaleForm = value.replaceAll(
+              RegExp(r'\bthey\b', caseSensitive: false), 'she');
+          otherForm = value.replaceAll(
+              RegExp(r'\bthey\b', caseSensitive: false),
+              '{gender, select, male{he} female{she} other{they}}');
         }
-        
+
         // Handle possessive pronouns
         if (value.toLowerCase().contains(' his ')) {
-          maleForm = maleForm.replaceAll(RegExp(r'\bhis\b', caseSensitive: false), 
-                     '{gender, select, male{his} female{her} other{their}}');
-          femaleForm = femaleForm.replaceAll(RegExp(r'\bhis\b', caseSensitive: false), 'her');
-          otherForm = otherForm.replaceAll(RegExp(r'\bhis\b', caseSensitive: false), 'their');
+          maleForm = maleForm.replaceAll(
+              RegExp(r'\bhis\b', caseSensitive: false),
+              '{gender, select, male{his} female{her} other{their}}');
+          femaleForm = femaleForm.replaceAll(
+              RegExp(r'\bhis\b', caseSensitive: false), 'her');
+          otherForm = otherForm.replaceAll(
+              RegExp(r'\bhis\b', caseSensitive: false), 'their');
         } else if (value.toLowerCase().contains(' her ')) {
-          maleForm = maleForm.replaceAll(RegExp(r'\bher\b', caseSensitive: false), 'his');
-          femaleForm = femaleForm.replaceAll(RegExp(r'\bher\b', caseSensitive: false), 
-                       '{gender, select, male{his} female{her} other{their}}');
-          otherForm = otherForm.replaceAll(RegExp(r'\bher\b', caseSensitive: false), 'their');
+          maleForm = maleForm.replaceAll(
+              RegExp(r'\bher\b', caseSensitive: false), 'his');
+          femaleForm = femaleForm.replaceAll(
+              RegExp(r'\bher\b', caseSensitive: false),
+              '{gender, select, male{his} female{her} other{their}}');
+          otherForm = otherForm.replaceAll(
+              RegExp(r'\bher\b', caseSensitive: false), 'their');
         } else if (value.toLowerCase().contains(' their ')) {
-          maleForm = maleForm.replaceAll(RegExp(r'\btheir\b', caseSensitive: false), 'his');
-          femaleForm = femaleForm.replaceAll(RegExp(r'\btheir\b', caseSensitive: false), 'her');
-          otherForm = otherForm.replaceAll(RegExp(r'\btheir\b', caseSensitive: false), 
-                      '{gender, select, male{his} female{her} other{their}}');
+          maleForm = maleForm.replaceAll(
+              RegExp(r'\btheir\b', caseSensitive: false), 'his');
+          femaleForm = femaleForm.replaceAll(
+              RegExp(r'\btheir\b', caseSensitive: false), 'her');
+          otherForm = otherForm.replaceAll(
+              RegExp(r'\btheir\b', caseSensitive: false),
+              '{gender, select, male{his} female{her} other{their}}');
         }
-        
+
         result[entry.key] = {
           "male": maleForm,
           "female": femaleForm,
@@ -219,16 +228,74 @@ class ArbGenerator {
 
   /// Scan for ambiguous or repetitive strings and add context notes
   static Map<String, dynamic> addContextNotes(Map<String, dynamic> arbData) {
-    final ambiguous = {'ok', 'yes', 'no', 'cancel', 'submit', 'save', 'edit', 'delete'};
+    final ambiguous = {
+      'ok',
+      'yes',
+      'no',
+      'cancel',
+      'submit',
+      'save',
+      'edit',
+      'delete'
+    };
     final updated = <String, dynamic>{};
     arbData.forEach((key, value) {
       updated[key] = value;
-      if (ambiguous.contains(key.toLowerCase()) || (value is String && ambiguous.contains(value.toLowerCase()))) {
+      if (ambiguous.contains(key.toLowerCase()) ||
+          (value is String && ambiguous.contains(value.toLowerCase()))) {
         updated['@$key'] = {
-          'description': 'Please provide context for "$key" (e.g., button label, dialog action, etc.)'
+          'description':
+              'Please provide context for "$key" (e.g., button label, dialog action, etc.)'
         };
       }
     });
     return updated;
+  }
+
+  /// Clean ARB file by removing entries with invalid ICU syntax (Dart interpolation)
+  static void cleanInvalidEntries(String filePath) {
+    final file = File(filePath);
+    if (!file.existsSync()) {
+      print('ARB file does not exist: $filePath');
+      return;
+    }
+
+    try {
+      final content = file.readAsStringSync();
+      final arbData = jsonDecode(content) as Map<String, dynamic>;
+
+      // Pattern to detect Dart string interpolation
+      final dartInterpolationPattern = RegExp(r'\$\{[^}]+\}');
+
+      final keysToRemove = <String>[];
+
+      // Find entries with invalid ICU syntax
+      arbData.forEach((key, value) {
+        if (value is String && dartInterpolationPattern.hasMatch(value)) {
+          keysToRemove.add(key);
+          print('Found invalid ICU syntax in key "$key": $value');
+        }
+      });
+
+      // Remove invalid entries
+      if (keysToRemove.isNotEmpty) {
+        for (final key in keysToRemove) {
+          arbData.remove(key);
+          // Also remove associated metadata if it exists
+          arbData.remove('@$key');
+        }
+
+        // Write cleaned ARB file
+        final cleanedContent = JsonEncoder.withIndent('  ').convert(arbData);
+        file.writeAsStringSync(cleanedContent);
+
+        print('✅ Cleaned ${keysToRemove.length} invalid entries from $filePath');
+        print('Removed keys: ${keysToRemove.join(', ')}');
+      } else {
+        print('✅ No invalid entries found in $filePath');
+      }
+    } catch (e) {
+      print('❌ Error cleaning ARB file: $e');
+    }
   }
 }

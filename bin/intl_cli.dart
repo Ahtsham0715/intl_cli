@@ -17,15 +17,16 @@ void main(List<String> arguments) {
       _logDebug('OS: ${Platform.operatingSystem}');
       _logDebug('Platform version: ${Platform.operatingSystemVersion}');
     }
-    
+
     // If we're running the internationalize command, we need to make sure
     // we're not trying to look for a directory called "internationalize"
-    if (arguments.isNotEmpty && (arguments[0] == 'internationalize' || arguments[0] == 'i18n')) {
+    if (arguments.isNotEmpty &&
+        (arguments[0] == 'internationalize' || arguments[0] == 'i18n')) {
       if (debugMode) _logDebug('Intercepting internationalize command');
-      
+
       // Create a complete new arguments list with explicit directory
       List<String> newArgs = [arguments[0]];
-      
+
       // If the second argument exists and isn't an option flag, use it as the directory
       // Otherwise, insert 'lib' as the default directory
       if (arguments.length > 1 && !arguments[1].startsWith('-')) {
@@ -39,9 +40,9 @@ void main(List<String> arguments) {
           newArgs.addAll(arguments.sublist(1)); // Add any options
         }
       }
-      
+
       if (debugMode) _logDebug('Modified arguments: $newArgs');
-      
+
       // Run the modified command
       cli.run(newArgs);
     } else {
@@ -62,10 +63,10 @@ void main(List<String> arguments) {
 void _logDebug(String message) {
   final debugMode = Platform.environment['INTL_CLI_DEBUG'] == 'true';
   if (!debugMode) return;
-  
+
   final timestamp = DateTime.now().toIso8601String();
   final logMessage = '[$timestamp] $message\n';
-  
+
   try {
     _debugFile.writeAsStringSync(logMessage, mode: FileMode.append);
     stderr.writeln('[DEBUG] $message'); // Use stderr for debug info

@@ -1,0 +1,10 @@
+# Ignored build files
+build/
+.dart_tool/
+
+# Test files
+test_key_generation.dart
+
+# Keep these files even if they're gitignored
+!bin/test_extractor.dart
+!lib/l10n/intl_en.arb
