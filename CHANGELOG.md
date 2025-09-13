@@ -1,3 +1,10 @@
+## 1.0.5
+
+- Fixes
+## 1.0.4
+
+- Dependencies issues fixed
+
 ## 1.0.3
 
 - **🧠 ML-Powered String Extraction:**
